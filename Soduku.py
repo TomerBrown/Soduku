@@ -1,67 +1,192 @@
 from random import Random
 import random
 import numpy as np
+import copy
+
+
 class Soduku:
-    def __init__(self,board):
-       assert_dimentions(board)
-       self.board = board
-       self.need_to_be_solved = count_zeros(board)
 
-    @staticmethod
-    def get_smaller_square(arr, i, j):
-        nums = set();
-        left = i - (i % 3)
-        upper = j - (j % 3)
-        smaller_cube = [[0,0,0],[0,0,0],[0,0,0]]
-        for m in range (0,3):
-            for n in range(0,3):
-                nums.add(arr[left + m][upper + n])
-        return nums
+    #Fields
+    # board : board need to be solved - updates over time
+    # need_to_solve_points : a list of coordinates (i,j,possibles) that still need to be solved.
+    #possibles is a list of all possible values for that point
+    def __init__(self, board,soloution=None,original=None):
+        self.board = board
+        self.need_to_solve_points = []
+        self.solved =0
+        self.soloution = soloution
+        self.original = original
+        for i in range (9):
+            for j in range (9):
+                if (self.board[i][j]==0):
+                    self.need_to_solve_points.append((i,j))
 
-    @staticmethod
-    def get_nums_in_row(arr,i,j):
-        nums = set();
-        for x in range(0,9):
-           t = arr[x][j]
-           nums.add(t)
-        return nums
+    #checks if the insert does not violate propeties and inserts
+    def insert (self,i,j,num):
+        if (self.is_legit(i,j,num)):
+            self.need_to_solve_points.remove((i,j))
+            self.board[i][j]= num
+            self.solved +=1
+            print(self.solved, "out of",self.number_to_solve())
 
-    @staticmethod
-    def get_nums_in_line(arr,i,j):
-        nums = set();
-        for x in range(0,9):
-           t = arr[i][x]
-           nums.add(t)
-        return nums
+    #check if num in postion (i,j) does not violate row coloumn or square
+    def is_legit(self,i,j,num):
+        if num<1 or num >9: return False
+        if (i,j) not in self.need_to_solve_points: return False
+        if self.board[i][j]!=0: return False
+        row = self.all_in_row(i)
+        line = self.all_in_line(j)
+        square = self.all_in_square(i,j)
+        return (num not in row) and (num not in line) and (num not in square)
 
-    @staticmethod
-    def possible_numbers (arr,i,j):
-        rows = Soduku.get_nums_in_row(arr,i,j)
-        lines = Soduku.get_nums_in_line(arr,i,j)
-        rl = rows.union(lines)
-        sq = Soduku.get_smaller_square(arr,i,j)
-        both = rl.union(sq)
-        lst = [True,True,True,True,True,True,True,True,True,True]
-        for num in both:
-            lst [num]= False
-        return [i for i in range(0,10) if lst[i]]
+    #how many more left to solve
+    def number_to_solve (self):
+        return len (self.need_to_solve_points)
+
+    #returns a set of all number in row
+    def all_in_row (self,i):
+        return set([self.board[i][j] for j in range (9)])
+
+    #returns a set of all numbers in line
+    def all_in_line(self, j):
+        return set([self.board[i][j] for i in range(9)])
+
+    # return a 3x3 square that contains (i,j)
+    def square3x3 (self,i,j):
+        square = [[0,0,0],[0,0,0],[0,0,0]]
+        left = i-(i%3)
+        up = j - (j%3)
+        for l in range (3):
+            for m in range (3):
+                square [l][m] = self.board[left+l][up+m]
+        return square
+
+    # return a set of all numbers in square
+    def all_in_square (self,i,j):
+        s = set([])
+        square = self.square3x3(i,j)
+        for line in square:
+            for num in line:
+                s.add(num)
+        return s
+
+    def get_possibles (self,i,j):
+        row = self.all_in_row(i)
+        line = self.all_in_line(j)
+        square = self.all_in_square(i,j)
+        all = set([i for i in range (1,10)])
+        return all - (square.union(row.union(line)))
 
 
+    def unique_line (self,i,j):
+        blank_line = [(i,x) for x in range(9) if x!=j and self.board[i][x]==0]
+        point_possibles = self.get_possibles(i,j);
+        all_other_possible = set([])
+        for (x,y) in blank_line:
+            all_other_possible = all_other_possible.union(self.get_possibles(x,y))
+        point_possibles = point_possibles-all_other_possible
+        if len(point_possibles)==1:
+            self.insert(i,j,list(point_possibles)[0])
+
+    def unique_row (self,i,j):
+        blank_line = [(x,j) for x in range(9) if x!=i and self.board[x][j]==0]
+        point_possibles = self.get_possibles(i,j);
+        all_other_possible = set([])
+        for (x,y) in blank_line:
+            all_other_possible = all_other_possible.union(self.get_possibles(x,y))
+        point_possibles = point_possibles-all_other_possible
+        if len(point_possibles)==1:
+            self.insert(i,j,list(point_possibles)[0])
+
+    def unique_square(self, i, j):
+        l = i-i%3
+        u= j-j%3
+        blank_line = []
+        for x in range (l,l+3):
+            for y in range (u,u+3):
+                if not(x==i and y==j or self.board[x][y]!=0):
+                    blank_line.append((x,y))
+        point_possibles = self.get_possibles(i, j)
+        all_other_possible = set([])
+        for (x, y) in blank_line:
+            all_other_possible = all_other_possible.union(self.get_possibles(x, y))
+        point_possibles = point_possibles - all_other_possible
+        if len(point_possibles) == 1:
+            self.insert(i, j, list(point_possibles)[0])
+
+    def unique_all (self,i,j):
+        self.unique_row(i, j)
+        self.unique_line(i,j)
+        self.unique_square(i,j)
+
+####################################################################################
+    ## The method that solves the puzzle
     def solve(self):
-        while (self.need_to_be_solved>0):
-            for i in range (0,9):
-                for j in range (0,9):
-                    num = self.board[i][j]
-                    if (num==0):
-                        possible = self.possible_numbers(self.board,i,j)
-                        if (len(possible)==1):
-                            self.board[i][j] = possible[0]
-                            self.need_to_be_solved -=1
+        #if for two rounds no soloution should quit.
+        #c is a counter for that
+        c=0
+        c2=0
+        while (self.number_to_solve()>0):
+            c += 1
+            c2+=1
+            #temp is used to see if something changed
+            for (i,j) in self.need_to_solve_points:
+                possibles = self.get_possibles(i,j)
+                if (len(possibles)==1):
+                    self.insert(i,j,list(possibles)[0])
+                self.unique_all(i, j)
+            if (c>=100):
+                try:
+                    self.insert(i,j,random.choice(list(possibles)))
+                    tempboard = copy.deepcopy(self.board)
+                    tempsolve = copy.deepcopy(self.need_to_solve_points)
+                    c=0
+                except:
+                    c=0
+                    self.board = tempboard
+                    self.need_to_solve_points= tempsolve
+            if c2>10000:
+                return
+
+
+
+
+
+        if (self.check_if_correct()):
+            print ("Solved Correctly")
+        else:
+            print ("Mistake Found")
         for line in self.board:
             print (line)
+##################################################################################
+    def display (self):
+        c1=0
+        c2=0
+        for line in self.board:
+            for num in line:
+                c1+=1
+                print (num,end =" ")
+                if c1==3:
+                    c1=0
+                    print ("|",end=" ")
+            print("")
+
+    def check_if_correct(self):
+        for i in range(9):
+            for j in range(9):
+                line = self.all_in_line(i)
+                row = self.all_in_row(j)
+                square = self.all_in_square(i,j)
+                if (len(line)!=9) or (len(row)!=9) or len(square)!=9: return False
+            return True
+
+
+
+
+
 
     @staticmethod
-    def generate():
+    def generate(num_to_delete):
         base = 3
         side = base * base
 
@@ -80,70 +205,37 @@ class Soduku:
         # produce board using randomized baseline pattern
         board = [[nums[pattern(r, c)] for c in cols] for r in rows]
         lst = []
+        print ("-"*100)
+        print("-" * 100)
         for i in range (9):
             for j in range (9):
                 lst.append((i,j))
         random.shuffle(lst)
-        for i in range (37):
+
+        temp_board = copy.deepcopy(board)
+
+        for i in range (num_to_delete):
             tup = lst[i]
             x = tup[0]
             y = tup[1]
             board[x][y]=0
 
-
-        return Soduku(board)
-
-
-
-
-
-
-
-
-def assert_dimentions(array):
-    bol1 = len(array) ==9
-    bol2 = True
-    for row in array:
-        if (len(row) != 9):
-            bol2 = False
-    assert bol1 and bol2
-
-def count_zeros (array):
-    count = 0
-    for line in array:
-        for number in line:
-            if number ==0:
-                count +=1
-    return count
-
+        return Soduku(board,temp_board,copy.deepcopy(board))
 
 
 
 def test():
-    line1 = [0,3,0,0,0,0,0,0,0]
-    line2 = [0,4,0,0,5,0,0,1,0]
-    line3 = [0,2,0,6,1,3,5,0,4]
-    line4 = [0,0,6,8,0,2,0,0,5]
-    line5 = [0,1,8,7,0,0,3,0,0]
-    line6 = [7,0,3,1,0,6,2,0,8]
-    line7 = [1,0,0,4,0,9,7,0,6]
-    line8 = [9,0,0,3,7,8,4,0,1]
-    line9 = [0,0,0,0,6,1,9,0,0]
 
-    board = [line1,line2,line3,line4,line5,line6,line7,line8,line9]
-    for line in board:
-        print (line)
-    soduku = Soduku(board)
-    print ("-"*100)
-    soduku.solve()
-    print("-" * 100)
-    soduku = Soduku.generate()
-    for line in soduku.board:
-        print(line)
-    print("-" * 100)
-    soduku.solve()
+
+    if (True):
+        for i in range (100):
+            soduku = Soduku.generate(46)
+            print("-"*100)
+            print ("*** test num",i,"***")
+            soduku.display()
+            print("-"*100)
+            soduku.solve()
 
 
 
 
-test()
